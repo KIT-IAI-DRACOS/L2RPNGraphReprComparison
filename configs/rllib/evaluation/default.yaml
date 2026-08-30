@@ -1,0 +1,8 @@
+evaluation_interval: 10
+evaluation_duration_unit: episodes
+evaluation_num_workers: 8
+
+# Overrides applied to the evaluation env (on top of the train env_config).
+# The training script appends _val to env.env_name for the eval environment.
+eval_env_overrides:
+  shuffle_scenarios: false

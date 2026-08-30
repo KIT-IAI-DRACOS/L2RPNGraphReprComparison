@@ -1,0 +1,5 @@
+batch_mode: complete_episodes
+count_steps_by: 'agent_steps'
+policies_to_train: ['reinforcement_learning_policy']
+rollout_fragment_length: auto
+checkpoint_trainable_policies_only: True

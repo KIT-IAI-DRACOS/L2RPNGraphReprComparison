@@ -1,0 +1,9 @@
+# Plain MLP policy — no custom model, no graph backbone.
+custom_model: null
+fcnet_hiddens: [256, 256, 256]
+fcnet_activation: relu
+post_fcnet_hiddens: []
+_enable_learner_api: false
+
+encoder: null
+gnn: null

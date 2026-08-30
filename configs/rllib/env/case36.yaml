@@ -1,0 +1,12 @@
+# Base name — training script appends _train / _val automatically.
+env_name: l2rpn_wcci_2020
+
+action_space: rl2grid_bus36-M_1
+rho_threshold: 0.95
+reset_topo: 0.0
+line_reco: true
+line_disc: false
+penalty_game_over: 0
+reward_finish: 0
+curriculum_training: false
+curriculum_thresholds: [20000, 46667]

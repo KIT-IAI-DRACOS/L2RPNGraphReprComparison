@@ -1,0 +1,16 @@
+defaults:
+  - base.yaml
+
+algorithm: ppo
+gamma: 0.99
+lr: 0.0001
+grad_clip: 40.0
+vf_loss_coeff: 0.5
+entropy_coeff: 0.0
+clip_param: 0.3
+lambda: 0.95
+vf_clip_param: 100
+use_kl_loss: false
+num_sgd_iter: 5
+sgd_minibatch_size: 256
+train_batch_size: 1024

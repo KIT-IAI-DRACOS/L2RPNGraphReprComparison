@@ -1,0 +1,6 @@
+enable: false
+score_metric: custom_metrics/grid2op_end_mean
+mode: max
+num_trials: null
+load_from: null
+points_to_evaluate: null

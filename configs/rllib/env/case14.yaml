@@ -1,0 +1,18 @@
+# Base name — training script appends _train / _val automatically.
+env_name: l2rpn_case14_sandbox
+
+action_space: medha
+rho_threshold: 0.95
+reset_topo: 0.0
+line_reco: true
+line_disc: false
+penalty_game_over: 0
+reward_finish: 0
+curriculum_training: false
+curriculum_thresholds: [20000, 46667]
+
+# Performance tuning
+# Path to a local chronics directory (e.g. $TMPDIR on HPC). Null = use Grid2Op default.
+chronics_dir: null
+# Load all chronics into RAM on first access (MultifolderWithCache). Eliminates per-step disk reads.
+use_chronics_cache: false # experiments show that this reduces efficiency -> don't use

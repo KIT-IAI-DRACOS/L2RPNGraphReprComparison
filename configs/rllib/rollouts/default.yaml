@@ -1,0 +1,21 @@
+num_rollout_workers: 48
+
+# IRRELEVANT under this project's RLlib API (old API stack, _enable_learner_api=False):
+# there are no separate learner-worker actors, so RLlib's own resource request
+# (Algorithm.default_resource_request) never reads these two fields — it only
+# reads `num_gpus` below for the driver's GPU allocation. Kept only because many
+# SLURM scripts already pass them as CLI overrides; changing them has no effect.
+# See experiments/train.py::build_rllib_config for the full explanation.
+num_learner_workers: 4
+num_gpus_per_learner_worker: 0
+
+# GPUs granted to the driver process (old API stack). This is the ONLY field that
+# actually controls GPU usage. See comment in experiments/train.py::build_rllib_config.
+num_gpus: 0
+
+batch_mode: complete_episodes # don't use truncated episodes here as it harms speed and survival rate
+count_steps_by: agent_steps
+keep_per_episode_custom_metrics: true
+framework: torch
+exploration_config:
+  type: StochasticSampling

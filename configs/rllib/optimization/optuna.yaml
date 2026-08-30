@@ -1,0 +1,27 @@
+defaults:
+  - disabled  # inherits score_metric, mode, load_from, etc.
+
+enable: true
+num_trials: 180
+
+# Search space consumed by _inject_search_space() in src/core/train.py.
+# Keys are '/'-separated paths into the assembled RLLib config dict.
+# Supported types: float (uniform or log-uniform), int (randint), categorical.
+search_space:
+
+  # --- GNN ---
+  model/custom_model_config/gnn/hidden_dim:
+    type: categorical
+    choices: [64, 128, 256]
+  model/custom_model_config/gnn/out_dim:
+    type: categorical
+    choices: [64, 128, 256]
+  model/custom_model_config/gnn/num_layers:
+    type: categorical
+    choices: [2, 3, 4]
+  model/custom_model_config/gnn/conv_type:
+    type: categorical
+    choices: [gcn, ginconv]
+  model/custom_model_config/gnn/residual:
+    type: categorical
+    choices: [true, false]

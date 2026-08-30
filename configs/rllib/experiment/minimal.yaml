@@ -1,0 +1,14 @@
+defaults:
+  - default  # inherits all keys from experiment/default.yaml
+
+nb_timesteps: 1
+checkpoint_freq: 1
+ray_local_mode: true
+folder_name: test_minimal
+name: test_minimal
+
+post_training_evaluation:
+  enabled: true
+  num_episodes: 1
+  max_episode_length: 10 # only the first 10 steps
+  visualize: false

@@ -1,0 +1,5 @@
+# Each entry is resolved via hydra.utils.get_class() in the training script,
+# then composed with ray.rllib.algorithms.callbacks.make_multi_callbacks().
+callbacks:
+  - _target_: core.callback.CustomMetricsCallback
+  - _target_: core.callback.TimerCallback

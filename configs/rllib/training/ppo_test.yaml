@@ -1,0 +1,6 @@
+defaults:
+  - ppo  # inherits all keys from training/ppo.yaml
+
+num_sgd_iter: 1
+sgd_minibatch_size: 4
+train_batch_size: 32

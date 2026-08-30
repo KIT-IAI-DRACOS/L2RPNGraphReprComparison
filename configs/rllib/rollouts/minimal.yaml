@@ -1,0 +1,10 @@
+defaults:
+  - default
+
+num_rollout_workers: 2
+
+# IRRELEVANT under this project's RLlib API stack — see default.yaml for why.
+num_learner_workers: 1
+num_gpus_per_learner_worker: 0
+
+batch_mode: truncate_episodes

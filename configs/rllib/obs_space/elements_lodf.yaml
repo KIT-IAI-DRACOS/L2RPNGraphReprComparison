@@ -1,0 +1,2 @@
+# Graph observation space — required by GNN models.
+observation_space: ElementLODFGraphObsSpace

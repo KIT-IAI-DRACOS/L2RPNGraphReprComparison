@@ -1,0 +1,4 @@
+# Flat (Box) observation space — used with MLP policy.
+observation_space: FlatObsSpace
+g2op_input: ["r", "p", "t"]
+custom_input: []

@@ -1,0 +1,4 @@
+# Graph observation space — required by GNN models.
+observation_space: GraphObsSpace
+g2op_input: ["r", "t"]
+custom_input: ["d"]

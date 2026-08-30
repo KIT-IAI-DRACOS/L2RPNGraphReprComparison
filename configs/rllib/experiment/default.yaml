@@ -1,0 +1,16 @@
+max_ep_len: 8064
+duration: ~  # HH:MM or minutes of training before stopping, used if value > 0
+nb_timesteps: 200000
+checkpoint_freq: 20
+verbose: 0
+my_log_level: 2
+storage_path: ./results
+name: default
+ray_local_mode: false
+seed: 42
+
+post_training_evaluation:
+  enabled: true
+  num_episodes: all  # integer or "all"
+  max_episode_length: ~ # to the very end
+  visualize: false

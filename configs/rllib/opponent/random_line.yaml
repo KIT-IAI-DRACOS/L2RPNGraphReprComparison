@@ -1,0 +1,19 @@
+enabled: true
+
+opponent_attack_cooldown: 144   # 12 steps/hour * 12 hours -> max 2 attacks per day
+opponent_attack_duration: 48    # 12 steps/hour * 4 hours
+opponent_budget_per_ts: 0.333343333333  # (duration / cooldown) + eps
+opponent_init_budget: 144       # can start attacking from midday on day 1
+
+# Dotted import paths resolved via hydra.utils.get_class at runtime
+opponent_action_class: grid2op.Action.PowerlineSetAction
+opponent_class: grid2op.Opponent.RandomLineOpponent
+opponent_budget_class: grid2op.Opponent.BaseActionBudget
+
+kwargs_opponent:
+  lines_attacked:
+    - '3_4_6'
+    - '11_12_13'
+    - '3_6_15'
+    - '3_8_16'
+    - '6_8_19'
