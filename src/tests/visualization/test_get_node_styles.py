@@ -178,9 +178,9 @@ class TestGetNodeStylesElementGraph(unittest.TestCase):
             self.assertEqual(self.styles[i].shape, "^", f"Load node {i} wrong shape")
 
     def test_line_colors(self):
-        """Line nodes are gray."""
+        """Line nodes are dimgray (distinct from the gray 'Powerline endpoint' nodes)."""
         for i in range(self.load_end, self.line_end):
-            self.assertEqual(self.styles[i].color, "gray", f"Line node {i} wrong color")
+            self.assertEqual(self.styles[i].color, "dimgray", f"Line node {i} wrong color")
 
     def test_line_labels(self):
         """Line nodes are labelled 'Powerline'."""

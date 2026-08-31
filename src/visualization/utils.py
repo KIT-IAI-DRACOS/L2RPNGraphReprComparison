@@ -88,7 +88,9 @@ class PlottingArgs:
     powerline_edge_colors: Optional[List[str]] = None  # Custom colors for powerline edges
     powerline_edge_widths: Optional[List[float]] = None  # Custom widths for powerline edges
     edge_styles: Optional[List[EdgeStyle]] = None  # Per-edge style (parallel to powerline_edge_index columns)
-    show_legend: bool = True
+    show_legend: bool = True  # master switch: no legend at all when False
+    show_node_legend: bool = True  # include node-type entries (Generator/Load/...) when show_legend is True
+    show_edge_legend: bool = True  # include edge-type entries when show_legend is True
     edge_labels: Optional[dict[tuple[int, int], str]] = None  # (min_u, max_u) -> label drawn at edge midpoint
     edge_label_font_size: int = 15
     substation_node_groups: Optional[dict[int, list[int]]] = None  # sub_id -> [node_idx, ...] for enclosing circles
@@ -590,14 +592,23 @@ def visualize_graph(args: PlottingArgs, ax=None) -> Figure:
         return None
 
 
-def _create_legend(args: PlottingArgs, G: nx.Graph, ax=None) -> None:
-    # --- Node legend (skip phantom/invisible nodes) ---
-    unique_labels = {}
-    for ns in args.node_styles:
+def build_node_legend_handles(node_styles: List[NodeStyle]) -> List[Line2D]:
+    """
+    Build one legend handle per unique visible node label.
+
+    Phantom node styles (``alpha == 0``, used only to expand axes bounds)
+    are skipped since they carry no visible marker to explain.
+
+    :param node_styles: node styles to draw legend entries for
+    :return: one :class:`~matplotlib.lines.Line2D` handle per unique label,
+             in first-seen order
+    """
+    unique_labels: dict[str, tuple[str, str, int]] = {}
+    for ns in node_styles:
         if ns.alpha > 0 and ns.label not in unique_labels:
             unique_labels[ns.label] = (ns.color, ns.shape, ns.size)
 
-    node_legend = [
+    return [
         Line2D(
             [0], [0],
             marker=shape,
@@ -611,7 +622,26 @@ def _create_legend(args: PlottingArgs, G: nx.Graph, ax=None) -> None:
         for label, (color, shape, size) in unique_labels.items()
     ]
 
-    # --- Edge legend (optional, for latent edge types) ---
+
+def dedupe_legend_handles(handles: List[Line2D]) -> List[Line2D]:
+    """
+    Remove handles with a duplicate label, keeping the first occurrence.
+
+    Used to merge legend handles collected from several converters/subplots
+    into a single shared legend.
+
+    :param handles: legend handles, possibly containing duplicate labels
+    :return: handles with duplicate labels removed, original order preserved
+    """
+    seen: dict[str, Line2D] = {}
+    for handle in handles:
+        seen.setdefault(handle.get_label(), handle)
+    return list(seen.values())
+
+
+def _build_edge_legend_handles(G: nx.Graph) -> List[Line2D]:
+    """Build one legend handle per unique edge type/label present in ``G``."""
+    # --- Dependency (latent) edges ---
     dependency_edge_colors = [d["color"] for (_, _, d) in G.edges(data=True) if d["type"] == "Dependency"]
     dependency_edge_colors_unique = set(dependency_edge_colors)
     edge_legend = [
@@ -636,26 +666,31 @@ def _create_legend(args: PlottingArgs, G: nx.Graph, ax=None) -> None:
             linestyle=d.get("style", "--"),
             label=lbl,
         ))
+    return edge_legend
 
-    # Place legend just outside the right edge of the axes so it never overlaps content.
-    # tight_layout / constrained_layout will automatically expand the margin to fit it.
-    if ax is not None:
-        ax.legend(
-            handles=node_legend + edge_legend,
-            loc="upper left",
-            bbox_to_anchor=(0.83, 0.9),
-            bbox_transform=ax.transAxes,
-            frameon=False,
-            fontsize=20,
-        )
+
+def _create_legend(args: PlottingArgs, G: nx.Graph, ax=None) -> None:
+    node_legend = build_node_legend_handles(args.node_styles) if args.show_node_legend else []
+    edge_legend = _build_edge_legend_handles(G) if args.show_edge_legend else []
+    handles = node_legend + edge_legend
+    if not handles:
+        return
+
+    if node_legend:
+        # Full (or node-only) legend: place it just outside the right edge of the
+        # axes so it never overlaps content. tight_layout / constrained_layout
+        # will automatically expand the margin to fit it.
+        legend_kwargs = dict(loc="upper left", bbox_to_anchor=(0.83, 0.9), frameon=False, fontsize=20)
     else:
-        plt.legend(
-            handles=node_legend + edge_legend,
-            loc="upper left",
-            bbox_to_anchor=(0.83, 0.9),
-            frameon=False,
-            fontsize=20,
-        )
+        # Edge-only legend (node types are merged into a shared legend elsewhere):
+        # a couple of short entries, so keep it inside the axes — reserving a
+        # dedicated outside margin per subplot would waste the space we just saved.
+        legend_kwargs = dict(loc="best", frameon=True, framealpha=0.85, fontsize=14)
+
+    if ax is not None:
+        ax.legend(handles=handles, bbox_transform=ax.transAxes, **legend_kwargs)
+    else:
+        plt.legend(handles=handles, **legend_kwargs)
 
 
 def visualize_grid(args: GridPlottingArgs, ax=None) -> Optional[Figure]:
@@ -1066,8 +1101,8 @@ def get_node_styles(env: Environment, observation_space: type[ObservationConvert
             ex_pos = np.array(layout[f"sub_{int(env.line_ex_to_subid[lid])}"], dtype=float)
             node_styles.append(NodeStyle(
                 position=(or_pos + ex_pos) / 2.0,
-                color="gray",
-                shape="o",
+                color="dimgray",
+                shape="h",
                 size=520,
                 label="Powerline",
             ))
@@ -1147,8 +1182,8 @@ def get_node_styles(env: Environment, observation_space: type[ObservationConvert
             ex_pos = np.array(layout[f"sub_{int(env.line_ex_to_subid[lid])}"], dtype=float)
             node_styles.append(NodeStyle(
                 position=(or_pos + ex_pos) / 2.0,
-                color="gray",
-                shape="o",
+                color="dimgray",
+                shape="h",
                 size=520,
                 label="Powerline",
             ))
