@@ -683,9 +683,13 @@ def _create_legend(args: PlottingArgs, G: nx.Graph, ax=None) -> None:
         legend_kwargs = dict(loc="upper left", bbox_to_anchor=(0.83, 0.9), frameon=False, fontsize=20)
     else:
         # Edge-only legend (node types are merged into a shared legend elsewhere):
-        # a couple of short entries, so keep it inside the axes — reserving a
-        # dedicated outside margin per subplot would waste the space we just saved.
-        legend_kwargs = dict(loc="best", frameon=True, framealpha=0.85, fontsize=14)
+        # placed near the axes edge rather than reserving a dedicated side
+        # margin; callers with multi-row grids control clearance via their own
+        # subplots_adjust(hspace=...). loc="center" anchors the box's true
+        # center (not its bottom edge) to bbox_to_anchor, so boxes with a
+        # different number of entries (hence different heights) still line up
+        # across subplots.
+        legend_kwargs = dict(loc="center", bbox_to_anchor=(0.5, 0.0), frameon=True, framealpha=0.85, fontsize=20)
 
     if ax is not None:
         ax.legend(handles=handles, bbox_transform=ax.transAxes, **legend_kwargs)
