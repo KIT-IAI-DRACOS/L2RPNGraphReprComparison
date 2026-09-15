@@ -55,3 +55,15 @@ The `src`-package contains the following packages:
 - **rl**: GNN and MLP model implementations for RLlib
 - **tests**: Unittests
 - **visualization**: Utilities to create figures
+
+# Citation
+If you use this framework in your research, please consider citing our paper 📝 and giving the repository a star ⭐:
+```commandline
+@article{degenkolb2026comparative,
+  title={A Comparative Study of Graph Representations for GNN-Based Power Grid Control in L2RPN},
+  author={Degenkolb, Adrian and Huang, Qiong and Sch{\"a}fer, Benjamin},
+  journal={arXiv preprint arXiv:2609.02538},
+  year={2026}
+}
+```
+
