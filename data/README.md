@@ -41,8 +41,7 @@ PYTHONPATH=$(pwd)/src python experiments/build_action_space.py aggregate --grid 
 (`src/imitation/tutor.py`) on `teacher_n1_k208` over the 2592 train chronics, 94,742 states with hard
 labels (format: `src/imitation/dataset.py`). It is too large for git; download it into this folder:
 
-- Download: **TODO: add the Zenodo link**
-- SHA-256: `9f21c9bc15076d7a879de2563340b0bf40e4d90ed05d2bc914b53f05fb474498`
+- Download: https://doi.org/10.5281/zenodo.24197186
 
 To rebuild it instead (see README.md):
 
