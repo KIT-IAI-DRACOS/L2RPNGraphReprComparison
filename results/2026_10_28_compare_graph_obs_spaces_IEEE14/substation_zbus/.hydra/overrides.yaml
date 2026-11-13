@@ -1,0 +1,13 @@
+- training=ppo
+- relation_awareness=disabled
+- experiment.nb_timesteps=100000
+- rollouts.num_rollout_workers=48
+- rollouts.num_gpus_per_learner_worker=0
+- rollouts.num_gpus=1
+- experiment.post_training_evaluation.enabled=True
+- reward.normalize_by_episode_length=true
+- training.kl_coeff=0.0
+- model=gcn_substation_readout
+- obs_space=graph_comparison/substation_zbus
+- experiment.name=2026_10_28_compare_graph_obs_spaces_IEEE14/substation_zbus
+- experiment.seed=4

@@ -1,2 +1,10 @@
+# Results are not tracked, except the small files the notebooks need to reproduce the paper's tables and
+# figures without retraining (see README.md).
 *
 !.gitignore
+!*/
+# 14 bus (experiments/compare_survival.ipynb)
+!2026_10_28_compare_graph_obs_spaces_IEEE14/*/.hydra/overrides.yaml
+!2026_10_28_compare_graph_obs_spaces_IEEE14/**/analysis/survival/*.npy
+!2026_10_28_compare_graph_obs_spaces_IEEE14/**/analysis/survival/summary.json
+!2026_10_28_compare_graph_obs_spaces_IEEE14/**/analysis/training_curve.csv

@@ -1,0 +1,7 @@
+{
+    "n_episodes": 50,
+    "completed_episodes_pct": 92.0,
+    "survived_steps_pct": 95.87425595238096,
+    "survived_steps_mean": 7731.3,
+    "survived_steps_std": 1154.968263633248
+}
