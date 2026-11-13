@@ -1,7 +1,7 @@
 # Base name — training script appends _train / _val automatically.
 env_name: l2rpn_wcci_2020
 
-action_space: rl2grid_bus36-M_1
+action_space: teacher_n1_k208  # N-1 Teacher top-208 actions (experiments/build_action_space.py)
 rho_threshold: 0.95
 reset_topo: 0.0
 line_reco: true
@@ -10,3 +10,8 @@ penalty_game_over: 0
 reward_finish: 0
 curriculum_training: false
 curriculum_thresholds: [20000, 46667]
+# Every rollout worker plays the train chronics in its own random order (false: all in sorted order).
+shuffle_scenarios: true
+
+# Path to a local chronics directory (e.g. $TMPDIR on HPC). Null = use Grid2Op default.
+chronics_dir: null

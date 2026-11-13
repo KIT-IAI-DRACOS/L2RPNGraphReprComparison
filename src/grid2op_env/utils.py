@@ -3,6 +3,8 @@ Utilities in the grid2op and gym convertion.
 """
 
 import os
+import zlib
+from pathlib import Path
 from typing import Any
 
 import grid2op
@@ -44,6 +46,65 @@ def rename_env(env: BaseEnv):
     if "_large" in env_name:
         env_name = env_name.replace("_large", "")
     env.set_env_name(env_name)
+
+
+def chronic_seed(base_seed: int, chronic_id: str) -> int:
+    """Seed for one chronic: depends on the chronic's name, not on its position in any list.
+
+    grid2op draws maintenance from the env seed, so a single seed for every chronic gives every
+    chronic the same maintenance schedule. Evaluating another agent with the same seed per chronic
+    reproduces the Tutor's maintenance exactly.
+
+    Args:
+        base_seed: Run-level seed.
+        chronic_id: Chronic path or name.
+
+    Returns:
+        A seed in [0, 2**31).
+    """
+    return (base_seed + zlib.crc32(Path(chronic_id).name.encode())) % 2**31
+
+
+def worker_seed(seed: int, worker_index: int, vector_index: int = 0) -> int:
+    """Env seed of one env copy of an RLlib run, different for every rollout worker and vectorized env.
+
+    Args:
+        seed: Run-level seed.
+        worker_index: RLlib worker index (0 = local worker, 1..n = remote workers).
+        vector_index: Index of the env within a worker that vectorizes several envs.
+
+    Returns:
+        A seed in [0, 2**31).
+    """
+    return int(np.random.SeedSequence([seed, worker_index, vector_index]).generate_state(1)[0] % 2**31)
+
+
+def shuffle_chronics(env: BaseEnv, seed: int) -> list[str]:
+    """Shuffle the order in which `env.reset()` goes through the chronics; grid2op's default is sorted by name.
+
+    Args:
+        env: Grid2Op env with a multi-folder chronics handler.
+        seed: Seed of the permutation.
+
+    Returns:
+        Chronic paths in the new order.
+    """
+    rng = np.random.default_rng(seed)
+    return [str(path) for path in env.chronics_handler.shuffle(shuffler=lambda order: order[rng.permutation(len(order))])]
+
+
+def chronic_shard(env: BaseEnv, shard: int, n_shards: int) -> list[str]:
+    """One of `n_shards` disjoint parts of the env's chronics: chronic `shard`, `shard + n_shards`, ... by name.
+
+    Args:
+        env: Grid2Op env with a multi-folder chronics handler.
+        shard: Index of the part, in [0, n_shards).
+        n_shards: Number of parts, e.g. the number of evaluation workers.
+
+    Returns:
+        Chronic paths, as accepted by `env.set_id`.
+    """
+    return sorted(str(path) for path in env.chronics_handler.subpaths)[shard::n_shards]
 
 
 def make_g2op_env(env_config: dict[str, Any]) -> BaseEnv:

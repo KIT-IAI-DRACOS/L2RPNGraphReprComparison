@@ -1,1 +1,2 @@
 _target_: grid2op_env.rewards.RewardRho
+normalize_by_episode_length: false  # true: every step reward / max_step of the chronic (returns, value targets = shares of the episode)

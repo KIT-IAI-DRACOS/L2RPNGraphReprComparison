@@ -1,6 +1,9 @@
 evaluation_interval: 1
 evaluation_duration_unit: episodes
 evaluation_num_workers: 1
+# Every evaluation plays all val chronics once, split over the evaluation workers, each chronic with the
+# env seed chronic_seed(seed, chronic); 42 is the base seed of experiments/imitation_rollout.py.
+seed: 42
 
 # Overrides applied to the evaluation env (on top of the train env_config).
 # The training script appends _val to env.env_name for the eval environment.

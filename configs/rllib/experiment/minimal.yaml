@@ -3,7 +3,9 @@ defaults:
 
 nb_timesteps: 1
 checkpoint_freq: 1
-ray_local_mode: true
+# Not local mode: there an exception while building the algorithm never reaches Tune, which then
+# waits forever instead of failing (seen with a mismatched imitation.weights_path, 2026-10-13).
+ray_local_mode: false
 folder_name: test_minimal
 name: test_minimal
 

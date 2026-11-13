@@ -1,0 +1,6 @@
+# Graph comparison: MLP baseline. The node features of complete (without the node-type one-hot) plus the
+# bus of every node, flattened by the model. Same information as complete, no graph structure.
+# Use with model=flat_mlp.
+observation_space: FlatGraphObsSpace
+node_features: complete
+use_forecasts: true
