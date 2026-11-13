@@ -8,3 +8,12 @@
 !2026_10_28_compare_graph_obs_spaces_IEEE14/**/analysis/survival/*.npy
 !2026_10_28_compare_graph_obs_spaces_IEEE14/**/analysis/survival/summary.json
 !2026_10_28_compare_graph_obs_spaces_IEEE14/**/analysis/training_curve.csv
+# 36 bus (experiments/graph_comparison_36bus_results.ipynb, slurm/unicluster/graph_comparison_36bus_senior.sh)
+!junior/graph36_*/trials.csv
+!junior/graph36_*/best/config.yaml
+!junior/graph36_*/best/history.csv
+!junior/graph36_*/best/test_metrics.json
+!junior/graph36_*/best/trial.txt
+!senior/2026_11_11_IEEE36_graph_comparison_senior_v2/**/rollout/episodes_*.csv
+!senior/2026_11_11_IEEE36_graph_comparison_senior_v2/**/trained_on.txt
+!senior/2026_11_11_IEEE36_graph_comparison_senior_v2/**/checkpoint_selection.json

@@ -1,0 +1,187 @@
+experiment:
+  max_ep_len: 8064
+  duration: null
+  nb_timesteps: 200000
+  checkpoint_freq: 20
+  verbose: 0
+  my_log_level: 2
+  storage_path: ./results
+  name: graph36_complete
+  ray_local_mode: false
+  seed: 42
+  post_training_evaluation:
+    enabled: true
+    num_episodes: all
+    max_episode_length: null
+    visualize: false
+training:
+  batch_mode: complete_episodes
+  count_steps_by: agent_steps
+  policies_to_train:
+  - reinforcement_learning_policy
+  rollout_fragment_length: auto
+  checkpoint_trainable_policies_only: true
+  algorithm: ppo
+  gamma: 0.99
+  lr: 0.0001
+  grad_clip: 40.0
+  vf_loss_coeff: 0.5
+  entropy_coeff: 0.0
+  clip_param: 0.3
+  lambda: 0.95
+  vf_clip_param: 100
+  use_kl_loss: false
+  kl_coeff: 0.2
+  num_sgd_iter: 5
+  sgd_minibatch_size: 256
+  train_batch_size: 1024
+model:
+  custom_model: gnn_model
+  fcnet_hiddens:
+  - 1024
+  - 1024
+  fcnet_activation: relu
+  post_fcnet_hiddens:
+  - 128
+  _enable_learner_api: false
+  gnn:
+    hidden_dim: 1024
+    out_dim: 64
+    num_layers: 4
+    residual: true
+    dropout_prob: 0.09358275891936466
+    conv_type: gcn
+    readout: substation
+obs_space:
+  observation_space: GraphObsSpace
+  node_features: complete
+  node_substations: true
+  use_forecasts: false
+reward:
+  _target_: grid2op_env.rewards.ConstantReward
+  normalize_by_episode_length: false
+env:
+  env_name: l2rpn_wcci_2020
+  action_space: teacher_n1_k208
+  rho_threshold: 0.95
+  reset_topo: 0.0
+  line_reco: true
+  line_disc: false
+  penalty_game_over: 0
+  reward_finish: 0
+  curriculum_training: false
+  curriculum_thresholds:
+  - 20000
+  - 46667
+opponent:
+  enabled: false
+evaluation:
+  evaluation_interval: 10
+  evaluation_duration_unit: episodes
+  evaluation_num_workers: 8
+  eval_env_overrides:
+    shuffle_scenarios: false
+rollouts:
+  num_rollout_workers: 48
+  num_learner_workers: 4
+  num_gpus_per_learner_worker: 0
+  num_gpus: 0
+  batch_mode: complete_episodes
+  count_steps_by: agent_steps
+  keep_per_episode_custom_metrics: true
+  framework: torch
+  exploration_config:
+    type: StochasticSampling
+callbacks:
+  callbacks:
+  - _target_: core.callback.CustomMetricsCallback
+  - _target_: core.callback.TimerCallback
+  - _target_: core.callback.ImitationInitCallback
+optimization:
+  enable: false
+  score_metric: custom_metrics/grid2op_end_mean
+  mode: max
+  num_trials: null
+  load_from: null
+  points_to_evaluate: null
+imitation:
+  dataset: data/imitation/case36_k208_greedy_hard.npz
+  eval_dataset: null
+  split: data/imitation/case36_split.json
+  max_train_samples: null
+  cache_dir: data/imitation/cache
+  warmup_states: 5000
+  epochs: 150
+  batch_size: 128
+  lr: 0.00046654909848166035
+  weight_decay: 0.00025343967447819
+  patience: 10
+  monitor: regret_top20
+  device: cuda
+  out_dir: results/junior/graph36_complete/trial_038
+  weights_path: null
+  critic_warmup_iters: 10
+  freeze_batch_norm: false
+hpo:
+  n_trials: 40
+  worker_id: 1
+  sampler_seed: 0
+  monitor: val_regret_top20
+  convert_only: false
+  pruner:
+    percentile: 75
+    n_startup_trials: 10
+    n_warmup_steps: 20
+  search_space:
+    imitation.lr:
+      type: float
+      low: 0.0001
+      high: 0.01
+      log: true
+    imitation.batch_size:
+      type: categorical
+      choices:
+      - 128
+      - 256
+      - 512
+    imitation.weight_decay:
+      type: float
+      low: 1.0e-05
+      high: 0.01
+      log: true
+    imitation.patience:
+      type: categorical
+      choices:
+      - 3
+      - 5
+      - 10
+    model.gnn.hidden_dim:
+      type: categorical
+      choices:
+      - 128
+      - 256
+      - 512
+      - 1024
+    model.gnn.num_layers:
+      type: categorical
+      choices:
+      - 2
+      - 3
+      - 4
+    model.gnn.dropout_prob:
+      type: float
+      low: 0.0
+      high: 0.3
+    model.fcnet_hiddens:
+      type: categorical
+      choices:
+      - - 64
+        - 64
+      - - 128
+        - 128
+      - - 256
+        - 256
+      - - 512
+        - 512
+      - - 1024
+        - 1024
