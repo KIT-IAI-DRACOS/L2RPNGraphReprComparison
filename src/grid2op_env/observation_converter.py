@@ -2838,7 +2838,7 @@ class FlatGraphObservationConverter(ObservationConverter[Dict]):
     plus the bus of every node (-1 = disconnected, 1, 2) in place of the edges. The MLP baseline of
     the graph comparison: the same information as the Complete graph, without graph structure.
 
-    Observation: {FLAT_FEATURES: [num_nodes, x_dim]}; `FlatMLPModel` flattens it.
+    Observation: {FLAT_FEATURES: [num_nodes, x_dim]}; RLlib's default model flattens it.
     """
 
     def __init__(self, graph: GraphObservationConverter, verbose: bool = False):

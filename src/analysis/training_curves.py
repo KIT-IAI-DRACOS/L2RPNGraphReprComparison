@@ -1,6 +1,6 @@
 """
 Training curves of an RLlib/Tune run: selected TensorBoard scalars of a trial as one table with a row
-per training iteration, e.g. for the Senior notebook (experiments/senior_results.ipynb).
+per training iteration, e.g. for the 14-bus training curves (experiments/compare_survival.ipynb).
 """
 from __future__ import annotations
 

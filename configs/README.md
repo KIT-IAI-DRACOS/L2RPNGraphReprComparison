@@ -1,152 +1,33 @@
-# Configuration Overview
+# Configuration
 
-This folder contains all configuration files used by **[Hydra](https://hydra.cc/)**, the configuration framework that drives the training pipeline. Hydra composes configurations at runtime from multiple YAML files, enabling modular overrides without touching source code.
-
-## Folder Structure
-
-```
-configs/
-└── rllib/               # RL training configurations (composed by experiments/train.py)
-    ├── config.yaml      # Root config — declares defaults for all groups below
-    ├── experiment/
-    ├── training/
-    ├── model/
-    ├── obs_space/
-    ├── env/
-    ├── reward/
-    ├── rollouts/
-    ├── callbacks/
-    ├── evaluation/
-    ├── optimization/
-    └── opponent/
-```
-
-## `rllib/` — RL Training Configs
-
-The `rllib/` subfolder is loaded by `experiments/train.py`. The root `config.yaml` sets default selections for every group; individual groups can be swapped via CLI:
+[Hydra](https://hydra.cc/) configs of `experiments/train.py` (RL), `experiments/pretrain_policy.py`
+(Junior) and `experiments/pretrain_hpo.py` (Junior HPO). `rllib/config.yaml` selects one file per group;
+any group or value can be overridden on the command line:
 
 ```bash
-python experiments/train.py training=ppo model=gnn env=case14
+PYTHONPATH=$(pwd)/src python experiments/train.py env=case36 obs_space=graph_comparison/lodf training.lr=3e-4
 ```
 
-Each subfolder configures one modular piece of the pipeline:
+| Group | Files | Purpose |
+|---|---|---|
+| `experiment/` | `default`, `minimal` | Timesteps, seed, checkpoint frequency, results folder (`experiment.name`), post-training evaluation |
+| `training/` | `ppo`, `ppo_test` (+ `base`) | PPO hyperparameters. The paper runs set `training.kl_coeff=0.0` |
+| `model/` | `gcn_substation_readout`, `mlp` | GCN with per-substation readout (all graph representations); RLlib's default MLP (flat baseline) |
+| `obs_space/graph_comparison/` | 12 representations | `complete` (Default graph), `heterogeneous`, `substation`, `elements`, `ptdf`, `lodf`, `zbus`, `substation_ptdf`, `substation_zbus`, `elements_lodf`, `no_edges`, `flat`; all with `node_features: complete` |
+| `env/` | `case14`, `case36` | Grid2Op env (`_train`/`_val`/`_test` appended), action space, rho threshold, chronic order |
+| `reward/` | `constant`, ... | Reward class; the paper runs use `constant` with `reward.normalize_by_episode_length=true` |
+| `imitation/` | `disabled`, `default` | Junior pretraining settings and the Senior's start from its weights (`imitation.weights_path`) |
+| `evaluation/` | `default`, `minimal` | Evaluation on the val env during training (every evaluation plays all val chronics) |
+| `rollouts/` | `default`, `minimal` | Rollout workers and GPUs (`rollouts.num_gpus` is the only GPU switch) |
+| `callbacks/` | `default` | RLlib callbacks: custom metrics, timing, imitation initialisation |
+| `optimization/` | `disabled`, `optuna` | Optional Ray Tune + Optuna search over RL hyperparameters (not used in the paper) |
+| `opponent/` | `disabled`, `random_line` | Optional line-attack opponent (not used in the paper) |
 
----
+Primary configs besides `config.yaml`:
 
-### `experiment/`
-Trial-level settings: total training timesteps, max episode length, checkpoint frequency, and whether to run post-training evaluation.
+- `minimal.yaml`: smoke test (`--config-name=minimal`).
+- `pretrain_hpo_graph36.yaml`, `pretrain_hpo_graph36_mlp.yaml`: Junior HPO on IEEE-36 (search space and
+  pruner under `hpo`), for the graph representations and the MLP baseline.
 
-| File | Purpose |
-|---|---|
-| `default.yaml` | Standard run (200k timesteps) |
-| `long.yaml` | Extended run (120M timesteps) with less frequent checkpoints |
-| `test_minimal.yaml` | Smoke test (10 timesteps, local Ray mode) — use this to verify the setup |
-| `hpc_test.yaml` | Short HPC smoke test (6k timesteps) without post-training evaluation |
-
----
-
-### `training/`
-Algorithm hyperparameters for the RLlib trainer. Pick one algorithm; shared settings live in `base.yaml`.
-
-| File | Purpose |
-|---|---|
-| `base.yaml` | Shared settings (batch mode, step counting, policy mapping) |
-| `ppo.yaml` | PPO (lr=1e-4, clip=0.3, 5 SGD iterations per batch) |
-| `sac.yaml` | SAC (entropy regularisation, twin Q-networks, 1M replay buffer) |
-| `dqn.yaml` | Rainbow DQN (dueling, double-Q, n-step=3, C51, noisy nets, PER) |
-| `ppo_test.yaml` | PPO with reduced batch sizes for quick testing |
-| `sac_test.yaml` | SAC with reduced batch sizes for quick testing |
-| `dqn_test.yaml` | DQN with reduced batch sizes for quick testing |
-
----
-
-### `model/`
-Neural network architecture for the RL policy. Controls whether a graph encoder and GNN are used.
-
-| File | Purpose |
-|---|---|
-| `gnn.yaml` | GNN policy — message-passing over the power grid graph. |
-| `mlp.yaml` | Plain MLP baseline — flat observation, three hidden layers of 256 units, no graph structure. |
-
----
-
-### `obs_space/`
-Observation format fed to the policy network.
-
-| File | Purpose |
-|---|---|
-| `graph.yaml` | Graph-structured observation: node feature matrix `[B, N, F]`, edge index, edge mask. Required for GNN models. |
-| `flat.yaml` | Flattened Box observation. Required for the MLP model. |
-
----
-
-### `env/`
-Grid2Op environment definition: which power grid case to use, which action space file, and the line-overload threshold that triggers episode termination.
-
-| File | Purpose                                                                |
-|---|------------------------------------------------------------------------|
-| `case14.yaml` | IEEE 14-bus test case, ρ threshold 0.95, requires `medha` action space |
-| `case36.yaml` | IEEE 36-bus WCCI 2020 case, requires `rl2grid_bus36` action space      |
-| `case118.yaml` | IEEE 118-bus WCCI 2022 case, requires `rl2grid_bus118` action space    |
-
----
-
-### `reward/`
-Reward function passed to the Grid2Op environment.
-
-| File | Purpose |
-|---|---|
-| `rho.yaml` | Reward based on maximum line loading (ρ metric) |
-| `scaled_l2rpn.yaml` | Scaled version of the official L2RPN challenge reward |
-| `constant.yaml` | Constant reward — useful for isolating structural learning from reward shaping |
-| `alpha_zero.yaml` | AlphaZero-style sparse reward |
-
----
-
-### `rollouts/`
-Ray worker topology: number of rollout workers, learner workers, and GPU allocation.
-
-| File | Purpose                                                                                   |
-|---|-------------------------------------------------------------------------------------------|
-| `default.yaml` | Production cluster setup: 48 rollout workers, 4 learner workers, 8 eval workers           |
-| `hpc_test.yaml` | Lightweight HPC test: 4 rollout workers, 1 learner worker (1 GPU)                         |
-| `test_minimal.yaml` | Single CPU worker for local testing                                                       |
-
----
-
-### `callbacks/`
-Registers custom RLlib callbacks that run during training.
-
-| File | Purpose |
-|---|---|
-| `default.yaml` | Enables `CustomMetricsCallback`, `TimerCallback`, and `TuneCallback` (logs custom metrics for Ray Tune) |
-
----
-
-### `evaluation/`
-In-training evaluation settings.
-
-| File | Purpose |
-|---|---|
-| `default.yaml` | Evaluate every 10 episodes using 8 dedicated eval workers |
-| `test_minimal.yaml` | Evaluate every episode using 1 worker (for quick tests) |
-
----
-
-### `optimization/`
-Hyperparameter search via Optuna (optional).
-
-| File | Purpose |
-|---|---|
-| `optuna.yaml` | Run 50 Optuna trials sweeping over model and training hyperparameters |
-| `disabled.yaml` | No sweep — use the fixed configuration as-is |
-
----
-
-### `opponent/`
-Adversarial line-attack opponent in the environment (optional).
-
-| File | Purpose |
-|---|---|
-| `disabled.yaml` | No opponent — standard single-agent setting |
-| `random_line.yaml` | `RandomLineOpponent` that randomly disconnects one of 5 specified transmission lines, subject to a cooldown and attack budget |
+The Senior runs (`slurm/unicluster/graph_comparison_36bus_senior.sh`) use `config.yaml` with the
+Junior's architecture added as overrides (`experiments/architecture_overrides.py`).
