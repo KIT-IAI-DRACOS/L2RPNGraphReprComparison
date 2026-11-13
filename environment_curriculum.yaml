@@ -1,0 +1,23 @@
+# Separate conda environment for running the Fraunhofer `curriculumagent` Teacher stage
+# (see Obsidian note "Teacher Action Space Reduction for IEEE-36 and IEEE-118").
+#
+# curriculumagent==1.1.2 pins ray==2.5.1 / tensorflow==2.12.1 / scipy==1.15.3, which conflict
+# with the main `L2RPN` training environment (ray==2.10.0, numpy==1.24.4, torch stack). Keep
+# the two environments fully separate — they only exchange files (JSON action spaces, CSV
+# teacher experience), never imports.
+#
+# Setup:
+#   conda env create -f environment_curriculum.yaml && conda activate curriculum
+#
+# Usage is confined to src/action_space_generation/ and experiments/build_action_space.py /
+# experiments/benchmark_teacher_cost.py. Nothing else in this repo should import curriculumagent.
+name: curriculum
+channels:
+  - conda-forge
+dependencies:
+  - python=3.10
+  - pip
+  - pytest
+  - pip:
+      - curriculumagent==1.1.2
+      - lightsim2grid>=0.7.1
