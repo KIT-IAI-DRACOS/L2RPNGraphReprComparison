@@ -3,3 +3,6 @@ __pycache__
 .claude
 .vscode
 .pytest_cache
+# Imitation data: the Tutor dataset is downloaded separately (README.md); the split is tracked.
+data/imitation/*
+!data/imitation/case36_split.json

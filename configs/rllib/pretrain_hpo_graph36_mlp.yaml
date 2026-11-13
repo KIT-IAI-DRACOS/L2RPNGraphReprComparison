@@ -1,0 +1,42 @@
+# HPO for the 36-bus graph comparison MLP baseline: RLlib's default model (separate MLP encoder
+# per Dict subspace) on FlatGraphObsSpace (same node features as the GNN variants, flattened), as the
+# MLP of the 14-bus comparison.
+#
+# Usage:
+#   python experiments/pretrain_hpo.py --config-name pretrain_hpo_graph36_mlp \
+#       experiment.name=graph36_flat imitation.dataset=data/imitation/case36_k208_greedy_hard.npz
+defaults:
+  - config
+  - override env: case36
+  - override model: mlp
+  - override obs_space: graph_comparison/flat
+  - override imitation: default
+  - _self_
+
+obs_space:
+  use_forecasts: false
+
+imitation:
+  epochs: 150
+  monitor: regret_top20
+
+hpo:
+  n_trials: 40
+  worker_id: 0
+  sampler_seed: 0
+  monitor: val_${imitation.monitor}
+  convert_only: false
+  pruner:
+    percentile: 75
+    n_startup_trials: 10
+    n_warmup_steps: 20
+  search_space:
+    imitation.lr: {type: float, low: 1.0e-5, high: 1.0e-2, log: true}
+    imitation.batch_size: {type: categorical, choices: [128, 256, 512, 768]}
+    imitation.weight_decay: {type: float, low: 1.0e-5, high: 1.0e-2, log: true}
+    imitation.patience: {type: categorical, choices: [3, 5, 10]}
+    model.fcnet_hiddens: {type: categorical, choices: [[256, 256, 256], [512, 512], [256, 256, 256, 256]]}
+
+hydra:
+  run:
+    dir: ${imitation.out_dir}/hydra/worker_${hpo.worker_id}

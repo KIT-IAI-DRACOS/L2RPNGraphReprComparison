@@ -4,25 +4,25 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This project compares different graph observation space representations for RL agents managing congestion in simulated power grids (L2RPN). Agents are trained with Ray RLlib using GNN or MLP policies on various graph encodings of the Grid2Op observation.
+Code of the paper *A Comparative Study of Graph Representations for GNN-Based Power Grid Control in L2RPN*: 12 observation representations (graphs with the same node features, a graph without edges, a flat MLP baseline) under one pipeline. 14 bus: PPO from scratch. 36 bus: N-1 Teacher (action space) → greedy Tutor (imitation data) → Junior (imitation learning, Optuna HPO) → Senior (PPO fine-tuning). See README.md for the reproduction steps.
 
 ## Commands
 
 ### Environment Setup
 ```bash
 conda env create -f environment.yaml && conda activate L2RPN
-python setup_envs.py  # Download and split Grid2Op scenario data
+python setup_envs.py  # Download the grids and create the paper's train/val/test envs (data/splits/)
 ```
 
 ### Training
 ```bash
-# Default GNN + PPO (from project root, PYTHONPATH must include .)
-PYTHONPATH=$(pwd) python experiments/train.py
+# GCN (per-substation readout) + PPO on the Complete graph (from project root)
+PYTHONPATH=$(pwd)/src python experiments/train.py
 
-# Key config group overrides
-python experiments/train.py training=ppo model=gnn obs_space=graph
-python experiments/train.py training=sac model=mlp obs_space=flat
-python experiments/train.py experiment=test_minimal  # Quick smoke test
+# Other representations / the MLP baseline
+PYTHONPATH=$(pwd)/src python experiments/train.py obs_space=graph_comparison/substation
+PYTHONPATH=$(pwd)/src python experiments/train.py model=mlp obs_space=graph_comparison/flat
+PYTHONPATH=$(pwd)/src python experiments/train.py --config-name=minimal  # Quick smoke test
 
 # CLI overrides
 python experiments/train.py experiment.nb_timesteps=500000 training.lr=3e-4
@@ -30,7 +30,7 @@ python experiments/train.py experiment.nb_timesteps=500000 training.lr=3e-4
 
 ### Tests
 ```bash
-python -m pytest src/tests/
+cd src && python -m pytest tests
 ```
 
 ## Architecture
@@ -39,11 +39,13 @@ The training pipeline is configured entirely via **Hydra** (configs/rllib/) and 
 
 ### Config Groups (configs/rllib/)
 - **experiment/**: trial-level settings (timesteps, seed, checkpoint freq)
-- **training/**: algorithm params — `ppo.yaml`, `sac.yaml`, `dqn.yaml`, and `*_test.yaml` variants
-- **model/**: network architecture — `gnn.yaml` (GNN policy), `mlp.yaml` (baseline)
-- **obs_space/**: graph observation space variant (e.g. `graph.yaml`, `lodf.yaml`, `ptdf.yaml`, …) or `flat.yaml`
-- **env/**: Grid2Op case definition (case14, case36, case118)
-- **reward/**: reward function class (`rho`, `scaled_l2rpn`, `constant`, `alpha_zero`)
+- **training/**: PPO params — `ppo.yaml`, `ppo_test.yaml`
+- **model/**: `gcn_substation_readout.yaml` (GNN policy), `mlp.yaml` (RLlib default MLP, flat baseline)
+- **obs_space/graph_comparison/**: the 12 representations, all with `node_features: complete`
+- **env/**: Grid2Op case definition (case14, case36)
+- **reward/**: reward function class (the paper: `constant` with `normalize_by_episode_length`)
+- **imitation/**: Junior pretraining settings and the Senior's start from its weights
+- `pretrain_hpo_graph36*.yaml`: primary configs of the Junior HPO
 
 ### Data Flow
 ```
@@ -59,11 +61,13 @@ Hydra Config
 ```
 
 ### Key Source Modules
-- **src/rl/**: Pure PyTorch — `gnn.py` (GNN backbone), `gnn_ppo_model.py` (RLlib TorchModelV2 wrapper), `mlp.py`
+- **src/rl/**: Pure PyTorch — `gnn.py` (GNN backbone), `readout.py` (per-substation readout), `gnn_ppo_model.py` (RLlib TorchModelV2 wrapper), `mlp.py`
 - **src/grid2op_env/**: Grid2Op wrappers — multi-agent env, observation/action converters, multi-agent policy implementations
-- **src/core/**: `constants.py` (global paths/names), `train.py` (training setup helpers), `loading.py` (checkpoint loading), `evaluate.py`
-- **src/algorithms/**: `CustomPPO`, `CustomSAC`, Optuna integration
-- **src/analysis/**: Post-training analysis — MetricAnalyzer, survival/action/congestion analyzers
+- **src/core/**: `constants.py` (global paths/names), `rllib_config.py` (Hydra → RLlib env/model config, shared by RL and imitation), `train.py` (training setup helpers), `callback.py`, `loading.py` (checkpoint loading), `evaluate.py`
+- **src/algorithms/**: `CustomPPO`, Optuna integration
+- **src/analysis/**: Post-training analyzers (survival/actions/congestion), `episodes.py` (shared episode tables and survival metrics), `training_curves.py`
+- **src/action_space_generation/**: N-1 Teacher (needs `curriculumagent`, env `environment_curriculum.yaml`)
+- **src/imitation/**: greedy Tutor, imitation datasets, Junior pretraining and HPO, rollouts, Senior helpers
 
 ### Constants (src/core/constants.py)
 Defines global output paths (`LOGS_PATH`, `MODELS_PATH`, `EVAL_PATH`), agent name strings (`RL_AGENT`, `HIGH_LEVEL_AGENT`, `DO_NOTHING_AGENT`), and policy names used consistently across the codebase.
@@ -71,10 +75,10 @@ Defines global output paths (`LOGS_PATH`, `MODELS_PATH`, `EVAL_PATH`), agent nam
 ### Callbacks
 - `CustomMetricsCallback`: collects episode metrics (survival, interact counts, curriculum)
 - `TimerCallback`: logs per-step wall-clock timings to TensorBoard
-- `TuneCallback`: logs custom metrics used by Ray Tune stoppers/schedulers
+- `ImitationInitCallback`: loads Junior weights into the RL policy (strictly), critic warm-up, frozen BatchNorm
 
 ### Multi-Agent Setup
 RLlib's MultiAgentEnv with three policies: `DO_NOTHING_POLICY`, `RL_POLICY` (trainable GNN/MLP), `HIGH_LEVEL_POLICY` (selector that decides whether the RL agent acts or does nothing). Policy mapping is handled in `src/grid2op_env/multi_agent_policies/`.
 
 ## Dependencies
-Python 3.10–3.12. Key packages: `torch`, `torch-geometric`, `ray[rllib,tune]`, `grid2op`, `gymnasium`, `hydra-core`, `optuna`, `stable-baselines3`. See `environment.yaml` for the full conda spec.
+Python 3.10–3.12. Key packages: `torch`, `torch-geometric`, `ray[rllib,tune]`, `grid2op`, `lightsim2grid`, `gymnasium`, `hydra-core`, `optuna`. See `environment.yaml` for the full conda spec.

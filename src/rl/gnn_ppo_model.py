@@ -14,9 +14,22 @@ from ray.rllib.utils.typing import ModelConfigDict, TensorType
 from torch import nn, Tensor
 
 from core.utils import getl
-from grid2op_env.observation_converter import NODES, EDGE_INDEX, EDGE_MASK, NODE_MASK, EDGE_TYPE, EDGE_WEIGHTS, EDGES
+from grid2op_env.observation_converter import NODES, EDGE_INDEX, EDGE_MASK, NODE_MASK, EDGE_TYPE, EDGE_WEIGHTS, EDGES, \
+    NODE_SUBSTATIONS
 from .gnn import GNN
 from .utils import assert_graph_obs_space_and_get_x_dim
+
+
+def substation_count(obs_space: Dict) -> int:
+    """Substations of the grid, from the NODE_SUBSTATIONS box (ids 0 ... high).
+
+    Raises:
+        ValueError: if the observation has no NODE_SUBSTATIONS (obs_space config `node_substations: true`).
+    """
+    if NODE_SUBSTATIONS not in obs_space.spaces:
+        raise ValueError("The substation readout needs NODE_SUBSTATIONS in the observation; "
+                         "set `node_substations: true` in the obs_space config.")
+    return int(obs_space[NODE_SUBSTATIONS].high.max()) + 1
 
 
 class GNNModel(TorchModelV2, nn.Module):
@@ -30,6 +43,8 @@ class GNNModel(TorchModelV2, nn.Module):
         TorchModelV2.__init__(self, obs_space, action_space, num_outputs, model_config, name)
         nn.Module.__init__(self)
         gnn_cfg = kwargs.get('gnn', {})
+        readout = getl(gnn_cfg, 'readout', 'mean')
+        n_sub = substation_count(obs_space) if readout == 'substation' else None
         self.gnn: GNN = GNN(
             x_dim=assert_graph_obs_space_and_get_x_dim(obs_space),
             hidden_dim=getl(gnn_cfg, 'hidden_dim', 64),
@@ -41,11 +56,14 @@ class GNNModel(TorchModelV2, nn.Module):
             edge_dim=obs_space[EDGES].shape[-1] if EDGES in obs_space.spaces else None,
             conv_type=getl(gnn_cfg, 'conv_type', 'gcn'),
             num_heads=getl(gnn_cfg, 'num_heads', 4),
+            readout=readout,
+            n_sub=n_sub,
         )
+        out_dim = getl(gnn_cfg, 'out_dim', 64)
         gnn_output_space = Box(
             low=-float('inf'),
             high=float('inf'),
-            shape=(getl(gnn_cfg, 'out_dim', 64),),
+            shape=(out_dim * n_sub if readout == 'substation' else out_dim,),
             dtype=np.float32
         )
         self.mlp = FullyConnectedNetwork(
@@ -105,13 +123,19 @@ class GNNModel(TorchModelV2, nn.Module):
         if edge_types is not None:
             edge_types = edge_types[valid_edges]     # [total_E]
 
+        node_substations = input_dict["obs"].get(NODE_SUBSTATIONS)
+        if node_substations is not None:
+            node_substations = node_substations[node_mask].long()   # [sum(n_real), 2]
+
         gnn_out: Tensor = self.gnn(
             x=x,
             batch=batch,
             edge_index=ei_flat.to(dtype=torch.long),
             edge_weights=edge_weights,
             edge_attr=edge_attr,
-            edge_types=edge_types
+            edge_types=edge_types,
+            node_substations=node_substations,
+            num_graphs=B,
         )
 
         logits, _ = self.mlp({"obs": gnn_out}, state, seq_lens)

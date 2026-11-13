@@ -6,7 +6,6 @@ import numpy as np
 from grid2op.Action import BaseAction
 from grid2op.Converter import IdToAct
 from grid2op.Environment import BaseEnv
-from grid2op.gym_compat import GymEnv, DiscreteActSpace
 
 
 class CustomIdToAct(IdToAct):
@@ -84,18 +83,3 @@ def load_actions(path: str, env: BaseEnv) -> list[BaseAction]:
             )
         )
 
-
-if __name__ == "__main__":
-    max_difficulty=10
-    difficulty=1
-    g2op_env = grid2op.make("l2rpn_case14_sandbox")
-    gym_env = GymEnv(g2op_env)
-    loaded_action_space = np.load("/home/adrian/Dev/RL2Grid/env/action_spaces/bus14_action_space.npy")
-    n_actions = np.geomspace(50, len(loaded_action_space), num=max_difficulty).astype(int)
-    gym_env.action_space = DiscreteActSpace(
-        g2op_env.action_space,
-        action_list=loaded_action_space[:n_actions[difficulty]]
-    )
-
-    for action in range(gym_env.action_space.n):
-        print(gym_env.action_space.from_gym(action).to_json())

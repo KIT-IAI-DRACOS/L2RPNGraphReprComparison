@@ -1,6 +1,7 @@
 """
 Class that defines the custom grid2op to gym environment with the set observation and action spaces.
 """
+import logging
 import os
 import time
 from typing import Any, Dict, Optional, Tuple
@@ -22,7 +23,10 @@ from core.constants import DO_NOTHING_AGENT, RL_AGENT, HIGH_LEVEL_AGENT, DO_NOTH
 from core.heuristic_actions import reconnection_rule, revert_to_reference_topo, disconnection_rule
 from .action_converters import CustomDiscreteActions, setup_converter, load_actions
 from .observation_converter import make_observation_converter, ObservationConverter
-from .utils import make_g2op_env
+from .rewards import normalize_by_episode_length
+from .utils import chronic_seed, chronic_shard, make_g2op_env, shuffle_chronics, worker_seed
+
+logger = logging.getLogger(__name__)
 
 # Environment configuration per curriculum level:
 ENV_CUR_MAP = [
@@ -63,6 +67,9 @@ class CustomizedGrid2OpEnvironment(MultiAgentEnv):
         # 2. create the gym environment
         self.env_gym = GymEnv(self.env_g2op, with_forecast=True)
         self.env_gym.reset()
+        # After GymEnv copied the env: the copy (`env_gym.init_env`, used by the post-training analysis) keeps
+        # the sorted chronic order.
+        self._setup_chronics(env_config)
 
         # 3. Setting up custom action space
         path = os.path.join(lib_dir, f"data/action_spaces/{self.env_g2op.env_name}/{env_config['action_space']}.json")  # path for action space
@@ -75,7 +82,7 @@ class CustomizedGrid2OpEnvironment(MultiAgentEnv):
 
         # 4. customize observation space
         self._obs_space_in_preferred_format = True
-        self.observation_converter: ObservationConverter = make_observation_converter(self.env_gym, env_config)
+        self.observation_converter: ObservationConverter = make_observation_converter(self.env_gym, env_config, backend=self.env_g2op.backend)
         self.observation_space = gym.spaces.Dict({
             HIGH_LEVEL_AGENT: gym.spaces.Discrete(2),
             RL_AGENT: self.observation_converter.observation_space,
@@ -90,6 +97,7 @@ class CustomizedGrid2OpEnvironment(MultiAgentEnv):
         self.reset_topo        = env_config.get("reset_topo", 0)                                             # reset topo option
         self.penalty_game_over = env_config.get("penalty_game_over", 0)                                      # penalty for game over
         self.reward_finish     = env_config.get("reward_finish", 0)                                          # reward for finishing complete episode
+        self.normalize_reward  = env_config.get("normalize_reward_by_episode_length", False)                 # divide every reward by the chronic's max_step
 
         # 6. initialize metrics
         self.step_surv        = 0
@@ -105,6 +113,57 @@ class CustomizedGrid2OpEnvironment(MultiAgentEnv):
         # initialize curriculum level:
         if env_config.get("curriculum_training", False):
             self.set_curriculum(level=0)
+
+    def _setup_chronics(self, env_config: dict[str, Any]) -> None:
+        """Give this env copy its own seed and chronic order.
+
+        RLlib builds one copy per rollout worker from the same `env_config`. Without a seed and chronic
+        order per copy, all workers play the same chronics in the same (sorted) order.
+        Training (`shuffle_scenarios`): the chronics are shuffled once with the copy's seed.
+        Evaluation (`chronic_shards` = n): the copy plays chronic i, i + n, ... (sorted by name, i from
+        its worker index), each seeded by `chronic_seed(eval_seed, chronic)`: n workers cover every
+        chronic once per pass, with the same maintenance in every evaluation.
+
+        Args:
+            env_config: RLlib's `EnvContext` (carries `worker_index` and `vector_index`) or a plain dict.
+        """
+        worker_index = getattr(env_config, "worker_index", None)
+        vector_index = getattr(env_config, "vector_index", 0)
+        shuffle = env_config.get("shuffle_scenarios", False)
+        n_shards = env_config.get("chronic_shards")
+        self._eval_seed = int(env_config.get("eval_seed", 0))
+        self._eval_chronics = None
+        self._n_eval_resets = 0
+
+        seed = int(env_config.get("seed", 0))
+        if worker_index is None:
+            if shuffle:
+                logger.warning("env_config has no worker_index (not built by RLlib): parallel copies of this env "
+                               "share one seed and one chronic order.")
+            worker_index = 0
+        else:
+            seed = worker_seed(seed, worker_index, vector_index)
+            self.env_g2op.seed(seed)
+
+        if n_shards:
+            shard = max(worker_index - 1, 0) % n_shards  # remote workers are numbered from 1
+            self._eval_chronics = chronic_shard(self.env_g2op, shard, n_shards)
+            order = f"evaluation shard {shard} of {n_shards} ({len(self._eval_chronics)} chronics)"
+            first = self._eval_chronics
+        elif shuffle:
+            order, first = "chronics shuffled", shuffle_chronics(self.env_g2op, seed)
+        else:
+            order, first = "chronics sorted by name", []
+        # print, not logging: Ray forwards a worker's stdout to the driver log, but not its log records.
+        print(f"Grid2Op env {env_config['env_name']}: worker {worker_index}, env {vector_index}, seed {seed}, {order}"
+              + (f", first: {', '.join(os.path.basename(c) for c in first[:3])}" if first else ""))
+
+    def _select_eval_chronic(self) -> None:
+        """Set the next chronic of this copy's evaluation shard and its seed for the coming `reset`."""
+        chronic = self._eval_chronics[self._n_eval_resets % len(self._eval_chronics)]
+        self._n_eval_resets += 1
+        self.env_g2op.seed(chronic_seed(self._eval_seed, chronic))
+        self.env_g2op.set_id(chronic)
 
     def reset_metrics(self):
         # different metrics to keep track of episode performance
@@ -137,6 +196,8 @@ class CustomizedGrid2OpEnvironment(MultiAgentEnv):
     ) -> Tuple[MultiAgentDict, MultiAgentDict]:
         # reset episode metrics
         self.reset_metrics()
+        if self._eval_chronics is not None:
+            self._select_eval_chronic()
         g2op_obs = self.env_g2op.reset()
         self.update_obs(g2op_obs)
         # Start with activation of the high level agent > decide to act or not to act.
@@ -223,6 +284,7 @@ class CustomizedGrid2OpEnvironment(MultiAgentEnv):
 
         if self.penalty_game_over and terminated: reward = self.penalty_game_over                                       # Adjust reward when episode terminates early
         if self.reward_finish and g2op_obs.current_step == g2op_obs.max_step: reward = self.reward_finish               # Adjust reward when episode finished
+        if self.normalize_reward: reward = normalize_by_episode_length(reward, g2op_obs)                                # Returns become shares of the episode
 
         return g2op_obs, reward, terminated, infos
 

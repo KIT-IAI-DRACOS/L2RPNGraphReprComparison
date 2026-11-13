@@ -1,0 +1,45 @@
+# HPO for the 36-bus graph comparison: GCN + substation readout across all graph_comparison obs_spaces.
+# Model of the 14-bus comparison; one study per representation, its best trial is the Junior of the paper.
+#
+# Usage (obs_space is passed per study):
+#   python experiments/pretrain_hpo.py --config-name pretrain_hpo_graph36 \
+#       obs_space=graph_comparison/substation experiment.name=graph36_substation \
+#       imitation.dataset=data/imitation/case36_k208_greedy_hard.npz
+defaults:
+  - config
+  - override env: case36
+  - override model: gcn_substation_readout
+  - override obs_space: graph_comparison/no_edges
+  - override imitation: default
+  - _self_
+
+obs_space:
+  use_forecasts: false
+
+imitation:
+  epochs: 150
+  monitor: regret_top20
+
+hpo:
+  n_trials: 40
+  worker_id: 0
+  sampler_seed: 0
+  monitor: val_${imitation.monitor}
+  convert_only: false
+  pruner:
+    percentile: 75
+    n_startup_trials: 10
+    n_warmup_steps: 20
+  search_space:
+    imitation.lr: {type: float, low: 1.0e-4, high: 1.0e-2, log: true}
+    imitation.batch_size: {type: categorical, choices: [128, 256, 512]}
+    imitation.weight_decay: {type: float, low: 1.0e-5, high: 1.0e-2, log: true}
+    imitation.patience: {type: categorical, choices: [3, 5, 10]}
+    model.gnn.hidden_dim: {type: categorical, choices: [128, 256, 512, 1024]}
+    model.gnn.num_layers: {type: categorical, choices: [2, 3, 4]}
+    model.gnn.dropout_prob: {type: float, low: 0.0, high: 0.3}
+    model.fcnet_hiddens: {type: categorical, choices: [[64, 64], [128, 128], [256, 256], [512, 512], [1024, 1024]]}
+
+hydra:
+  run:
+    dir: ${imitation.out_dir}/hydra/worker_${hpo.worker_id}

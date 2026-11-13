@@ -9,6 +9,7 @@ import numpy as np
 from grid2op.Action.baseAction import BaseAction
 from grid2op.dtypes import dt_float
 from grid2op.Environment.baseEnv import BaseEnv
+from grid2op.Observation import BaseObservation
 from grid2op.Reward import L2RPNReward
 from grid2op.Reward.baseReward import BaseReward
 
@@ -248,3 +249,17 @@ class ConstantReward(BaseReward):
             return self.reward_min
         return self.reward_max
 
+
+def normalize_by_episode_length(reward: float, obs: BaseObservation) -> float:
+    """Reward divided by the chronic's length, so returns are shares of the episode.
+
+    With `ConstantReward` the return from a state becomes the share of the chronic still to survive,
+    in [0, 1], on any grid and for any chronic length (switch `reward.normalize_by_episode_length`).
+
+    Args:
+        reward: Reward of one grid2op step.
+        obs: Observation after that step; `max_step` is the chronic's length.
+    """
+    if obs.max_step <= 0:
+        raise ValueError(f"Cannot normalize the reward by the episode length: max_step = {obs.max_step}")
+    return reward / obs.max_step

@@ -1,0 +1,161 @@
+experiment:
+  max_ep_len: 8064
+  duration: null
+  nb_timesteps: 200000
+  checkpoint_freq: 20
+  verbose: 0
+  my_log_level: 2
+  storage_path: ./results
+  name: graph36_flat
+  ray_local_mode: false
+  seed: 42
+  post_training_evaluation:
+    enabled: true
+    num_episodes: all
+    max_episode_length: null
+    visualize: false
+training:
+  batch_mode: complete_episodes
+  count_steps_by: agent_steps
+  policies_to_train:
+  - reinforcement_learning_policy
+  rollout_fragment_length: auto
+  checkpoint_trainable_policies_only: true
+  algorithm: ppo
+  gamma: 0.99
+  lr: 0.0001
+  grad_clip: 40.0
+  vf_loss_coeff: 0.5
+  entropy_coeff: 0.0
+  clip_param: 0.3
+  lambda: 0.95
+  vf_clip_param: 100
+  use_kl_loss: false
+  kl_coeff: 0.2
+  num_sgd_iter: 5
+  sgd_minibatch_size: 256
+  train_batch_size: 1024
+model:
+  custom_model: null
+  fcnet_hiddens:
+  - 512
+  - 512
+  fcnet_activation: relu
+  post_fcnet_hiddens: []
+  _enable_learner_api: false
+  gnn: null
+obs_space:
+  observation_space: FlatGraphObsSpace
+  node_features: complete
+  use_forecasts: false
+reward:
+  _target_: grid2op_env.rewards.ConstantReward
+  normalize_by_episode_length: false
+env:
+  env_name: l2rpn_wcci_2020
+  action_space: teacher_n1_k208
+  rho_threshold: 0.95
+  reset_topo: 0.0
+  line_reco: true
+  line_disc: false
+  penalty_game_over: 0
+  reward_finish: 0
+  curriculum_training: false
+  curriculum_thresholds:
+  - 20000
+  - 46667
+opponent:
+  enabled: false
+evaluation:
+  evaluation_interval: 10
+  evaluation_duration_unit: episodes
+  evaluation_num_workers: 8
+  eval_env_overrides:
+    shuffle_scenarios: false
+rollouts:
+  num_rollout_workers: 48
+  num_learner_workers: 4
+  num_gpus_per_learner_worker: 0
+  num_gpus: 0
+  batch_mode: complete_episodes
+  count_steps_by: agent_steps
+  keep_per_episode_custom_metrics: true
+  framework: torch
+  exploration_config:
+    type: StochasticSampling
+callbacks:
+  callbacks:
+  - _target_: core.callback.CustomMetricsCallback
+  - _target_: core.callback.TimerCallback
+  - _target_: core.callback.ImitationInitCallback
+optimization:
+  enable: false
+  score_metric: custom_metrics/grid2op_end_mean
+  mode: max
+  num_trials: null
+  load_from: null
+  points_to_evaluate: null
+imitation:
+  dataset: data/imitation/case36_k208_greedy_hard.npz
+  eval_dataset: null
+  split: data/imitation/case36_split.json
+  max_train_samples: null
+  cache_dir: data/imitation/cache
+  warmup_states: 5000
+  epochs: 150
+  batch_size: 512
+  lr: 0.0005292953869959052
+  weight_decay: 8.440665799349554e-05
+  patience: 3
+  monitor: regret_top20
+  device: cuda
+  out_dir: results/junior/graph36_flat/trial_024
+  weights_path: null
+  critic_warmup_iters: 10
+  freeze_batch_norm: false
+hpo:
+  n_trials: 40
+  worker_id: 0
+  sampler_seed: 0
+  monitor: val_regret_top20
+  convert_only: false
+  pruner:
+    percentile: 75
+    n_startup_trials: 10
+    n_warmup_steps: 20
+  search_space:
+    imitation.lr:
+      type: float
+      low: 1.0e-05
+      high: 0.01
+      log: true
+    imitation.batch_size:
+      type: categorical
+      choices:
+      - 128
+      - 256
+      - 512
+      - 768
+    imitation.weight_decay:
+      type: float
+      low: 1.0e-05
+      high: 0.01
+      log: true
+    imitation.patience:
+      type: categorical
+      choices:
+      - 3
+      - 5
+      - 10
+    model.fcnet_hiddens:
+      type: categorical
+      choices:
+      - - 256
+        - 256
+        - 256
+      - - 512
+        - 512
+      - - 256
+        - 256
+        - 256
+        - 256

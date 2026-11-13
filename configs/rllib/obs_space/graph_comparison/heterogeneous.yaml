@@ -1,0 +1,6 @@
+# Graph comparison: as complete, plus same-substation/other-bus edges; three edge types.
+# Node features of CompleteGraphObsSpace for every representation (see the node features of each converter).
+observation_space: HeterogeneousGraphObsSpace
+node_features: complete
+node_substations: true  # each node's substation(s), for the per-substation readout (model=gcn_substation_readout)
+use_forecasts: true

@@ -282,23 +282,28 @@ def run_training(rllib_cfg: dict[str, Any], cfg: DictConfig) -> ResultGrid:
     # --- Print checkpoint summary for each trial ---
     for i, result in enumerate(result_grid):
         if not result.error:
+            # Evaluation metrics of every kept checkpoint. On an iteration without evaluation RLlib repeats the
+            # last evaluation's results, so `training_iteration` tells whether they belong to these weights.
             checkpoints_to_json = {
                 os.path.basename(checkpoint.path): {
-                    k: v for k, v in metrics.get('evaluation', {}).get('custom_metrics', {}).items()
-                    if not isinstance(v, list)
+                    **{k: v for k, v in metrics.get('evaluation', {}).get('custom_metrics', {}).items()
+                       if not isinstance(v, list)},
+                    "training_iteration": metrics.get("training_iteration"),
+                    "timesteps_total": metrics.get("timesteps_total"),
                 }
                 for checkpoint, metrics in result.best_checkpoints
             }
             with open(os.path.join(result.path, "checkpoint_results.json"), "w") as f:
-                json.dump(checkpoints_to_json, f)
+                # Custom metrics can be numpy scalars, which json can't serialize.
+                json.dump(checkpoints_to_json, f, default=lambda v: v.item() if hasattr(v, "item") else str(v))
             try:
                 eval_metrics = result.metrics.get('evaluation', {}).get('custom_metrics', {})
                 if eval_metrics:
                     print(
                         Style.BOLD + f" *---- Trial {i} finished successfully ---*\n" + Style.END +
                         tabulate(
-                            [[k] + list(v.values()) for k, v in checkpoints_to_json.items() if v],
-                            headers=['checkpoint'] + list(eval_metrics.keys()),
+                            [[k] + list(v.values()) for k, v in checkpoints_to_json.items()],
+                            headers=['checkpoint'] + list(next(iter(checkpoints_to_json.values())).keys()),
                             tablefmt='rounded_grid',
                         )
                     )
@@ -444,6 +449,26 @@ def print_details(rllib_cfg: Dict[str, Any]) -> None:
     logger.info(f'Chronics are cached:        {rllib_cfg["env_config"].get("use_chronics_cache", False)}')
 
 
+def _slurm_ray_resources() -> dict[str, int]:
+    """
+    ray.init arguments that limit Ray to the SLURM allocation; empty outside SLURM.
+
+    Without them Ray sizes itself for the whole node (e.g. 192 CPUs and a 200 GB object store
+    in a job with 8 CPUs and 64 GB), which slows ray.init down from ~7 s to ~60 s and lets the
+    object store outgrow the job's memory limit. GPUs need no limit: Ray reads CUDA_VISIBLE_DEVICES.
+    """
+    resources = {}
+    cpus = os.environ.get("SLURM_CPUS_PER_TASK") or os.environ.get("SLURM_CPUS_ON_NODE")
+    if cpus:
+        resources["num_cpus"] = int(cpus)
+    mem_mb = os.environ.get("SLURM_MEM_PER_NODE")
+    if not mem_mb and os.environ.get("SLURM_MEM_PER_CPU") and cpus:
+        mem_mb = int(os.environ["SLURM_MEM_PER_CPU"]) * int(cpus)
+    if mem_mb:
+        resources["object_store_memory"] = int(int(mem_mb) * 1024 ** 2 * 0.3)  # Ray's default share
+    return resources
+
+
 def _setup_ray(exp):
     # --- Init Ray ---
     os.environ["RAY_DEDUP_LOGS"] = "0"
@@ -453,6 +478,8 @@ def _setup_ray(exp):
     os.environ["WANDB_SILENT"] = "true"
     os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
     os.environ["PYTHONWARNINGS"] = "ignore:Could not parse CUBLAS_WORKSPACE_CONFIG:UserWarning"
-    ray.init(local_mode=exp.ray_local_mode)
+    ray.init(local_mode=exp.ray_local_mode, **_slurm_ray_resources())
     logger.info(f"Ray initialized in {'local' if exp.ray_local_mode else 'cluster'} mode.")
-    logger.info(f"Ray sees GPUs: {ray.available_resources().get('GPU', 0)}")
+    available = ray.available_resources()
+    logger.info(f"Ray sees CPUs: {available.get('CPU', 0)}, GPUs: {available.get('GPU', 0)}, "
+                f"object store: {available.get('object_store_memory', 0) / 1024 ** 3:.1f} GiB")

@@ -1,0 +1,3 @@
+# No imitation pretraining: RL starts from a random policy.
+weights_path: null       # policy weights from experiments/pretrain_policy.py, loaded into RL_POLICY at the start of RL
+critic_warmup_iters: 0   # first RL iterations in which only the value branch is trained

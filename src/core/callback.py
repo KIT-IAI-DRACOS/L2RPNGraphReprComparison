@@ -7,6 +7,7 @@ from typing import Dict, Optional, List, Any
 
 import grid2op
 import numpy as np
+import torch
 from ray._private.dict import unflattened_lookup
 from ray.rllib import RolloutWorker, BaseEnv, Policy
 from ray.rllib.algorithms.algorithm import Algorithm
@@ -36,6 +37,115 @@ def _get_policy(algorithm: Algorithm, policy_id: str = _POLICY_ID):
         if p is not None:
             return p
     return None
+
+
+def _policy_models(policy: Policy) -> list[torch.nn.Module]:
+    """The policy's model plus its per-GPU tower copies, which are what actually gets trained on GPU."""
+    models = [policy.model]
+    models += [m for m in getattr(policy, "model_gpu_towers", []) if m is not policy.model]
+    return models
+
+
+def is_value_parameter(name: str) -> bool:
+    """Whether a model parameter belongs to the value head.
+
+    RLlib's FullyConnectedNetwork names it `_value_branch[_separate]`, its ComplexInputNetwork (the default
+    model for Dict observations, e.g. the flat MLP) `value_layer`.
+    """
+    return "_value_branch" in name or name.startswith("value_layer")
+
+
+def set_policy_trainable(policy: Policy, trainable: bool, freeze_batch_norm: bool = False) -> None:
+    """Freeze (or unfreeze) every parameter except the value branch.
+
+    Frozen parameters get no gradient, so PPO's optimizer leaves them unchanged while the value
+    branch keeps learning. The shared feature network (GNN) is frozen too: its features feed the
+    policy logits, so training it on the value loss alone would change the policy. Its BatchNorm
+    layers stay in eval mode while frozen (`set_batch_norm_frozen`), and also after unfreezing if
+    `freeze_batch_norm` is set.
+    """
+    for model in _policy_models(policy):
+        for name, param in model.named_parameters():
+            param.requires_grad = trainable or is_value_parameter(name)
+        set_batch_norm_frozen(model, not trainable or freeze_batch_norm)
+
+
+def _to_eval_mode(module: torch.nn.Module, inputs: tuple) -> None:
+    """Forward pre-hook: run the module in eval mode, whatever mode RLlib set."""
+    module.eval()
+
+
+def set_batch_norm_frozen(model: torch.nn.Module, frozen: bool) -> None:
+    """Keep every BatchNorm outside the value branch in eval mode while the policy is frozen.
+
+    RLlib switches the model to train mode for every update. A frozen BatchNorm would then normalize
+    with batch statistics and keep updating its running statistics, which the sampling workers use
+    (eval mode): the policy would drift during the critic warm-up, and the critic would learn on
+    other features than the sampled ones. A forward pre-hook switches the layer back to eval mode;
+    unfreezing removes it, and RLlib's next `model.train()` restores train mode.
+    """
+    for name, module in model.named_modules():
+        if not isinstance(module, torch.nn.modules.batchnorm._BatchNorm) or is_value_parameter(name):
+            continue
+        hook = getattr(module, "_frozen_eval_hook", None)
+        if frozen and hook is None:
+            module._frozen_eval_hook = module.register_forward_pre_hook(_to_eval_mode)
+        elif not frozen and hook is not None:
+            hook.remove()
+            del module._frozen_eval_hook
+
+
+class ImitationInitCallback(DefaultCallbacks):
+    """
+    Starts RL from imitation-pretrained policy weights (experiments/pretrain_policy.py).
+
+    Reads ``policy.config["imitation"]``:
+      - ``weights_path``:        state_dict of the RL_POLICY model; null = do nothing.
+      - ``critic_warmup_iters``: for the first N training iterations only the value branch is
+        trained, so PPO's policy updates are not driven by a random critic's advantages.
+      - ``freeze_batch_norm``:   keep the BatchNorm layers outside the value branch in eval mode
+        for the whole run, with or without pretrained weights. RLlib samples in eval mode but
+        computes the PPO loss in train mode; with batch statistics the two are different policies,
+        which distorts PPO's probability ratio and KL. Scale and shift stay trainable.
+
+    Weights are loaded strictly: a model built from a different config fails loudly instead of
+    silently training from partly random weights. When restoring a checkpoint, RLlib loads the
+    checkpoint after this hook, so the pretrained weights do not overwrite trained ones.
+    """
+
+    def on_algorithm_init(self, *, algorithm: Algorithm, **kwargs) -> None:
+        super().on_algorithm_init(algorithm=algorithm, **kwargs)
+        policy = _get_policy(algorithm)
+        cfg = (policy.config.get("imitation") or {}) if policy is not None else {}
+        self._freeze_batch_norm = bool(cfg.get("freeze_batch_norm", False))
+        if self._freeze_batch_norm:
+            for model in _policy_models(policy):
+                set_batch_norm_frozen(model, True)
+            logger.info("ImitationInitCallback: BatchNorm layers stay in eval mode for the whole run")
+        weights_path = cfg.get("weights_path")
+        if not weights_path:
+            return
+
+        device = next(policy.model.parameters()).device
+        state_dict = torch.load(weights_path, map_location=device)
+        for model in _policy_models(policy):
+            model.load_state_dict(state_dict)
+        logger.info(f"ImitationInitCallback: loaded pretrained policy weights from {weights_path}")
+
+        self._warmup_iters = int(cfg.get("critic_warmup_iters", 0))
+        if self._warmup_iters > 0:
+            set_policy_trainable(policy, False)
+            logger.info(f"ImitationInitCallback: critic warm-up, only the value branch trains for {self._warmup_iters} iterations")
+        if algorithm.workers.num_remote_workers() > 0:
+            algorithm.workers.sync_weights(policies=[RL_POLICY])
+
+    def on_train_result(self, *, algorithm: Algorithm, result: dict, **kwargs) -> None:
+        super().on_train_result(algorithm=algorithm, result=result, **kwargs)
+        warmup = getattr(self, "_warmup_iters", 0)
+        if warmup > 0 and result.get("training_iteration", 0) >= warmup:
+            set_policy_trainable(_get_policy(algorithm), True, freeze_batch_norm=self._freeze_batch_norm)
+            self._warmup_iters = 0
+            logger.info("ImitationInitCallback: critic warm-up done, training the full policy")
 
 
 class TuneCallback(TuneReporterBase):

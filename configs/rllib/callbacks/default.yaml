@@ -3,3 +3,4 @@
 callbacks:
   - _target_: core.callback.CustomMetricsCallback
   - _target_: core.callback.TimerCallback
+  - _target_: core.callback.ImitationInitCallback

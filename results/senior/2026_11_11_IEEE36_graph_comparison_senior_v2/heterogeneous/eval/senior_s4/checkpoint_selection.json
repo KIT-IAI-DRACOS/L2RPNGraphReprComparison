@@ -1,0 +1,21 @@
+{
+ "checkpoint": "checkpoint_000006",
+ "training_iteration": 70,
+ "timesteps_total": 89057,
+ "val_survival": 6071,
+ "evaluation_interval": 10,
+ "candidates": {
+  "checkpoint_000006": {
+   "training_iteration": 70,
+   "val_survival": 6071
+  },
+  "checkpoint_000008": {
+   "training_iteration": 90,
+   "val_survival": 5878
+  },
+  "checkpoint_000013": {
+   "training_iteration": 140,
+   "val_survival": 5869
+  }
+ }
+}
