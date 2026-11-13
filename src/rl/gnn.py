@@ -8,9 +8,11 @@ from typing import Literal, Optional
 
 import torch
 from torch import nn, Tensor
+from torch.nn import functional as F
 from torch_geometric.nn import GCNConv, GATConv, BatchNorm, global_mean_pool
 
 from .mlp import MLP
+from .readout import ReadoutType, substation_readout
 
 ConvType = Literal["gcn", "gin", "gat"]
 
@@ -28,7 +30,8 @@ class GNN(nn.Module):
     equally. Supports two convolution kernels via *conv_type*:
 
     * ``"gcn"`` (default) — GCNConv with ``improved=True``. Edge attributes
-      are projected to scalar edge weights via a small MLP.
+      are projected to scalar edge weights via a small MLP and a softplus:
+      GCN normalizes by the weighted node degree, which must stay positive.
     * ``"gat"`` — GATConv with multi-head attention (``concat=False`` so
       output dim stays *hidden_dim*). Edge attributes are fed directly into
       the attention mechanism; no MLP projection is required.
@@ -50,6 +53,9 @@ class GNN(nn.Module):
     :param residual: If ``True``, h = h + h_new each layer; else h = h_new.
     :param conv_type: Convolution kernel — ``"gcn"`` or ``"gat"``.
     :param num_heads: Number of attention heads (GAT only; ignored for GCN).
+    :param readout: ``"mean"`` (output [B, x_out_dim]) or ``"substation"``
+        (output [B, n_sub * x_out_dim], see :func:`~rl.readout.substation_readout`).
+    :param n_sub: Substations per graph; required for the substation readout.
     """
 
     def __init__(
@@ -64,11 +70,17 @@ class GNN(nn.Module):
             residual: bool = True,
             conv_type: ConvType = "gcn",
             num_heads: int = 4,
+            readout: ReadoutType = "mean",
+            n_sub: Optional[int] = None,
     ):
         super().__init__()
+        if readout == "substation" and n_sub is None:
+            raise ValueError("readout='substation' needs n_sub.")
         self.residual = residual
         self.edge_dim = edge_dim
         self.conv_type = conv_type
+        self.readout = readout
+        self.n_sub = n_sub
 
         self.node_proj = MLP(x_dim, hidden_dim, hidden_dim, dropout_prob=dropout_prob, do_batch_norm=False)
         self.bn_node_proj = BatchNorm(hidden_dim)
@@ -106,6 +118,8 @@ class GNN(nn.Module):
             edge_types: Optional[Tensor] = None,
             edge_weights: Optional[Tensor] = None,
             edge_attr: Optional[Tensor] = None,
+            node_substations: Optional[Tensor] = None,
+            num_graphs: Optional[int] = None,
     ) -> Tensor:
         """
         :param x: Node features [N, x_dim].
@@ -116,8 +130,12 @@ class GNN(nn.Module):
         :param edge_weights: Scalar edge weights [E]. GCN only; mutually
             exclusive with *edge_attr*.
         :param edge_attr: Edge attribute matrix [E, edge_dim]. For GCN,
-            projected to scalar weights; for GAT, fed into attention directly.
-        :return: Graph-level embeddings [B, x_out_dim].
+            projected to positive scalar weights; for GAT, fed into attention directly.
+        :param node_substations: Substation(s) of every node [N, 2], -1 = none
+            (substation readout only).
+        :param num_graphs: Graphs in the batch B (substation readout only).
+        :return: Graph-level embeddings [B, x_out_dim] (mean readout) or
+            [B, n_sub * x_out_dim] (substation readout).
         """
         assert edge_weights is None or edge_attr is None, \
             "edge_weights and edge_attr are mutually exclusive"
@@ -128,7 +146,8 @@ class GNN(nn.Module):
         # GCN: project edge attributes to scalar weights once before the loop.
         if self.conv_type == "gcn" and edge_attr is not None and edge_weights is None:
             assert self.edge_dim is not None, "edge_dim must be set at construction to use edge_attr"
-            edge_weights = self.edge_proj(edge_attr).squeeze(-1)
+            # Positive weights: a negative weighted degree makes GCN's deg^-1/2 normalization NaN.
+            edge_weights = F.softplus(self.edge_proj(edge_attr)).squeeze(-1)
 
         h = self.bn_node_proj(self.node_proj(x))
 
@@ -153,4 +172,6 @@ class GNN(nn.Module):
             h = self.dropout(h)
             h = h + h_new if self.residual else h_new
 
+        if self.readout == "substation":
+            return substation_readout(self.final(h), batch, node_substations, num_graphs, self.n_sub)
         return global_mean_pool(self.final(h), batch)

@@ -32,20 +32,19 @@ from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.callbacks import make_multi_callbacks
 from ray.rllib.algorithms.ppo import PPOTorchPolicy
 from ray.rllib.algorithms.registry import POLICIES
-from ray.rllib.models import ModelCatalog
 from ray.rllib.policy.policy import PolicySpec
 
 from core.constants import DO_NOTHING_POLICY, RL_POLICY, HIGH_LEVEL_POLICY, set_seed
+from core.rllib_config import build_env_config, build_model_config, register_custom_models
 from core.train import run_training
 from grid2op_env import policy_mapping_fn
 from grid2op_env.env import CustomizedGrid2OpEnvironment
 from grid2op_env.multi_agent_policies.do_nothing_policy import DoNothingPolicy
 from grid2op_env.multi_agent_policies.select_agent_policy import SelectAgentPolicy
-from rl.gnn_ppo_model import GNNModel
 
 logger = logging.getLogger(__name__)
 
-ModelCatalog.register_custom_model("gnn_model", GNNModel)
+register_custom_models()
 
 POLICIES[DO_NOTHING_POLICY] = DoNothingPolicy
 POLICIES[HIGH_LEVEL_POLICY] = SelectAgentPolicy
@@ -58,75 +57,6 @@ _ALGORITHM_CONFIG_CLS = {
 # ---------------------------------------------------------------------------
 # Config → RLLib translation
 # ---------------------------------------------------------------------------
-
-def _build_env_config(cfg: DictConfig, split: str) -> dict[str, Any]:
-    """Build an env_config dict for the given split ('train' or 'val')."""
-    env = cfg.env
-    obs = cfg.obs_space
-    reward_instance = get_class(cfg.reward._target_)()
-
-    env_config = {
-        "env_name": f"{env.env_name}_{split}",
-        "action_space": env.action_space,
-        "observation_space": obs.observation_space,
-        "g2op_input": obs.get("g2op_input", []),
-        "custom_input": obs.get("custom_input", []),
-        "lib_dir": os.getcwd(),
-        "grid2op_kwargs": {"reward_class": reward_instance},
-        "seed": cfg.experiment.seed,
-        "rho_threshold": env.rho_threshold,
-        "reset_topo": env.reset_topo,
-        "line_reco": env.line_reco,
-        "line_disc": env.line_disc,
-        "penalty_game_over": env.penalty_game_over,
-        "reward_finish": env.reward_finish,
-        "curriculum_training": env.curriculum_training,
-        "curriculum_thresholds": list(env.curriculum_thresholds),
-        "chronics_dir": env.get("chronics_dir", None),
-        "use_chronics_cache": env.get("use_chronics_cache", False),
-    }
-
-    if cfg.opponent.enabled:
-        opp = cfg.opponent
-        env_config["grid2op_kwargs"].update(
-            {
-                "opponent_attack_cooldown": opp.opponent_attack_cooldown,
-                "opponent_attack_duration": opp.opponent_attack_duration,
-                "opponent_budget_per_ts": opp.opponent_budget_per_ts,
-                "opponent_init_budget": opp.opponent_init_budget,
-                "opponent_action_class": get_class(opp.opponent_action_class),
-                "opponent_class": get_class(opp.opponent_class),
-                "opponent_budget_class": get_class(opp.opponent_budget_class),
-                "kwargs_opponent": OmegaConf.to_container(opp.kwargs_opponent, resolve=True),
-            }
-        )
-
-    if split == "val":
-        overrides = OmegaConf.to_container(cfg.evaluation.eval_env_overrides, resolve=True)
-        env_config.update(overrides)
-
-    return env_config
-
-
-def _build_model_config(cfg: DictConfig) -> dict[str, Any]:
-    """Build the RLLib model dict from cfg.model."""
-    model = cfg.model
-    custom_model_config: dict[str, Any] = {}
-
-    if model.encoder is not None:
-        custom_model_config["encoder"] = OmegaConf.to_container(model.encoder, resolve=True)
-
-    if model.gnn is not None:
-        custom_model_config["gnn"] = OmegaConf.to_container(model.gnn, resolve=True)
-
-    return {
-        "fcnet_hiddens": list(model.fcnet_hiddens),
-        "fcnet_activation": model.fcnet_activation,
-        "post_fcnet_hiddens": list(model.post_fcnet_hiddens),
-        "custom_model": model.custom_model if model.custom_model != "null" else None,
-        "custom_model_config": custom_model_config,
-    }
-
 
 def _build_policies(cfg: DictConfig, algorithm: str) -> dict:
     """Build the multi-agent policies dict."""
@@ -182,13 +112,20 @@ def build_rllib_config(cfg: DictConfig) -> dict[str, Any]:
     rllib_cfg.update(training)
 
     # --- Model ---
-    rllib_cfg["model"] = _build_model_config(cfg)
+    rllib_cfg["model"] = build_model_config(cfg)
     rllib_cfg["_enable_learner_api"] = cfg.model._enable_learner_api
     rllib_cfg["_enable_rl_module_api"] = False
 
+    # --- Imitation pretraining (read by ImitationInitCallback) ---
+    imitation = OmegaConf.to_container(cfg.imitation, resolve=True)
+    if imitation.get("weights_path"):
+        # Tune runs each trial in its own directory, so a relative path would not resolve there.
+        imitation["weights_path"] = os.path.abspath(imitation["weights_path"])
+    rllib_cfg["imitation"] = imitation
+
     # --- Environment ---
-    train_env_config = _build_env_config(cfg, "train")
-    val_env_config = _build_env_config(cfg, "val")
+    train_env_config = build_env_config(cfg, "train")
+    val_env_config = build_env_config(cfg, "val")
     rllib_cfg["env_config"] = train_env_config
     rllib_cfg["env"] = CustomizedGrid2OpEnvironment
 
@@ -198,6 +135,9 @@ def build_rllib_config(cfg: DictConfig) -> dict[str, Any]:
     rllib_cfg["evaluation_duration_unit"] = eval_cfg.evaluation_duration_unit
     rllib_cfg["always_attach_evaluation_results"] = True
     rllib_cfg["evaluation_num_workers"] = eval_cfg.evaluation_num_workers
+    # Evaluation worker i plays val chronic i, i + n, ... with a fixed seed per chronic (CustomizedGrid2OpEnvironment).
+    n_eval_shards = max(eval_cfg.evaluation_num_workers, 1)
+    val_env_config.update(chronic_shards=n_eval_shards, eval_seed=eval_cfg.get("seed", 42))
     rllib_cfg["evaluation_config"] = {"env_config": val_env_config, "explore": False}
 
     # Number of eval episodes = number of available chronics for the val env
@@ -205,6 +145,9 @@ def build_rllib_config(cfg: DictConfig) -> dict[str, Any]:
     chronics_path = os.path.join(grid2op.get_current_local_dir(), val_env_name, "chronics")
     if os.path.exists(chronics_path):
         rllib_cfg["evaluation_duration"] = len(os.listdir(chronics_path))
+        if rllib_cfg["evaluation_duration"] % n_eval_shards:
+            logger.warning("%d val chronics are not a multiple of %d evaluation workers: an evaluation does not "
+                           "cover every chronic exactly once", rllib_cfg["evaluation_duration"], n_eval_shards)
     else:
         rllib_cfg["evaluation_duration"] = 50
         logger.warning("Val chronics path not found (%s); defaulting evaluation_duration=50", chronics_path)

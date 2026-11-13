@@ -1,8 +1,8 @@
 defaults:
   - experiment: default
   - training: ppo
-  - model: gnn
-  - obs_space: graph
+  - model: gcn_substation_readout
+  - obs_space: graph_comparison/complete
   - reward: constant
   - env: case14
   - opponent: disabled
@@ -10,6 +10,7 @@ defaults:
   - rollouts: default
   - callbacks: default
   - optimization: disabled
+  - imitation: disabled
   - _self_
 
 hydra:

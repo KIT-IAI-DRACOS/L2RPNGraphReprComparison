@@ -1,0 +1,19 @@
+# GNNBaselineModel ("gnn_model") with GCN layers and a per-substation readout: the node embeddings are
+# averaged per substation and concatenated (n_sub * out_dim inputs to the policy/value layers), so the
+# head keeps where in the grid something happens. Needs an obs_space with `node_substations: true`.
+custom_model: gnn_model
+fcnet_hiddens: [128, 128]
+fcnet_activation: relu
+post_fcnet_hiddens: [128]
+_enable_learner_api: false
+
+encoder: null
+
+gnn:
+  hidden_dim: 256
+  out_dim: 64  # per substation
+  num_layers: 3
+  residual: true
+  dropout_prob: 0.0
+  conv_type: gcn
+  readout: substation

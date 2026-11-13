@@ -1,0 +1,24 @@
+# Imitation pretraining of the RL policy (experiments/pretrain_policy.py) and its use in RL training.
+# Pretraining needs observations without forecasts (the Tutor stores obs.to_vect(), which has none):
+# run with obs_space.use_forecasts=false, and fine-tune with the same setting.
+
+# --- Pretraining ---
+dataset: data/imitation/case36_k208_greedy_hard.npz  # training data, format of src/imitation/dataset.py
+eval_dataset: null         # val/test metrics and early stopping; null = dataset. Greedy-Tutor data gives regret metrics for any source.
+split: data/imitation/case36_split.json  # chronic-level split shared by every dataset
+max_train_samples: null    # random subset of the train split, for size-matched comparisons
+cache_dir: data/imitation/cache
+warmup_states: 5000        # states converted first so the converter's running normalizer settles
+epochs: 50
+batch_size: 256
+lr: 1.0e-3
+weight_decay: 1.0e-4
+patience: 5                # epochs without a lower val `monitor` before stopping
+monitor: kl                # val metric (key of imitation.pretrain.evaluate, lower = better) for early stopping and the best epoch
+device: cpu
+out_dir: ${experiment.storage_path}/junior/${experiment.name}
+
+# --- RL fine-tuning ---
+weights_path: null         # e.g. ${imitation.out_dir}/policy_weights.pt
+critic_warmup_iters: 10    # first RL iterations in which only the value branch is trained
+freeze_batch_norm: false   # BatchNorm in eval mode for the whole RL run, so sampling and PPO loss use the same policy

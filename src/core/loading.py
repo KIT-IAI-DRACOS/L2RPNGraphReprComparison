@@ -12,8 +12,6 @@ from typing import Optional, Tuple
 from grid2op.Agent import BaseAgent
 from grid2op.Environment import Environment
 
-from ray.rllib.models import ModelCatalog
-
 from agents import RllibAgent
 from core.constants import RL_POLICY
 from grid2op_env import CustomizedGrid2OpEnvironment
@@ -194,6 +192,8 @@ def load_rllib_agent(
     """
     # Add env_name to config for CustomizedGrid2OpEnvironment
     env_config["env_name"] = env_name
+    # One env for evaluation: chronics in their sorted order.
+    env_config["shuffle_scenarios"] = False
 
     # Create the CustomizedGrid2OpEnvironment to get proper observation/action spaces
     gym_wrapper = CustomizedGrid2OpEnvironment(env_config)
@@ -202,8 +202,8 @@ def load_rllib_agent(
     g2op_env = gym_wrapper.env_gym.init_env
 
     # Re-register custom models (ray.shutdown() clears the ModelCatalog registry)
-    from rl.gnn_ppo_model import GNNModel
-    ModelCatalog.register_custom_model("gnn_model", GNNModel)
+    from core.rllib_config import register_custom_models
+    register_custom_models()
 
     # Load the RLlib agent
     agent = RllibAgent(
