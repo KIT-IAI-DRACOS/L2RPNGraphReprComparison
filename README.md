@@ -49,8 +49,6 @@ regenerated without training:
 | Table I, Fig. S-3 | `experiments/compare_survival.ipynb` | `results/2026_10_28_compare_graph_obs_spaces_IEEE14/` |
 | Tables II, III | `experiments/graph_comparison_36bus_results.ipynb` | `results/senior/2026_11_11_IEEE36_graph_comparison_senior_v2/` |
 
-Spreads are the sample standard deviation over the 5 training seeds.
-
 ## 14 bus (Table I)
 
 ```bash
@@ -66,8 +64,7 @@ PYTHONPATH=$(pwd)/src python experiments/train.py obs_space=graph_comparison/sub
     reward.normalize_by_episode_length=true training.kl_coeff=0.0 experiment.nb_timesteps=100000 \
     experiment.post_training_evaluation.enabled=true experiment.name=my_run/substation
 ```
-
-The MLP baseline is `model=mlp obs_space=graph_comparison/flat`. Quick smoke test:
+For local tests we recommend the minimal setup:
 `PYTHONPATH=$(pwd)/src python experiments/train.py --config-name=minimal`.
 
 ## 36 bus (Tables II, III)
@@ -94,10 +91,6 @@ The MLP baseline is `model=mlp obs_space=graph_comparison/flat`. Quick smoke tes
    ```
    The rollout tables (`<obs>/junior_s<seed>/rollout/`, `<obs>/eval/senior_s<seed>/rollout/`) are what
    `experiments/graph_comparison_36bus_results.ipynb` reads.
-
-Single steps outside SLURM: `experiments/pretrain_policy.py` (Junior), `experiments/train.py
-imitation=default imitation.weights_path=...` (Senior), `experiments/export_policy_weights.py` and
-`experiments/imitation_rollout.py` (rollouts); see their docstrings.
 
 # Project structure
 
